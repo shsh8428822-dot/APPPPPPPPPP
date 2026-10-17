@@ -109,6 +109,10 @@ private val games = listOf(
     Game("tap", "אתגר הקשות", "כמה לחיצות תספיק ב־10 שניות?", "👆", true),
     Game("simon", "זכור את הרצף", "אמן את הזיכרון", "🎨", true),
     Game("higher", "גבוה או נמוך", "נחש אם הקלף הבא גבוה יותר", "🃏", true),
+    Game("2048", "2048", "מזג מספרים עד 2048", "🔢", true),
+    Game("mines", "שולה מוקשים", "מצא את המשבצות הבטוחות", "💣", true),
+    Game("hangman", "נחש את המילה", "נחש אותיות לפני שנגמרים הניסיונות", "🔤", true),
+    Game("numMemory", "זיכרון מספרים", "זכור רצף מספרים קצר", "🧠", true),
     Game("arcade", "ארקייד", "מתוכנן להרחבה", "👾", false),
     Game("board", "משחקי לוח", "מתוכנן להרחבה", "♟️", false)
 )
@@ -285,10 +289,13 @@ private fun ToolsScreen(onAction: (String) -> Unit) {
 
 @Composable
 private fun GamesScreen(onGame: (Game) -> Unit) {
+    var search by remember { mutableStateOf("") }
     Page {
         Text("מרכז המשחקים", fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("${games.count { it.ready }} משחקונים לא מקוונים זמינים כרגע. הרחבת הספרייה ל־250 משחקי קוד פתוח עדיין לא הושלמה.", fontSize = 13.sp, color = Color(0xFFADBDB3))
-        games.forEach { g ->
+        Text("${games.count { it.ready }} משחקונים לא מקוונים פעילים בגרסה זו. ספריית 250 המשחקים שביקשת עדיין אינה שלמה.", fontSize = 13.sp, color = Color(0xFFADBDB3))
+        OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth(), label = { Text("חיפוש משחק") }, singleLine = true)
+        val visibleGames = games.filter { it.name.contains(search, ignoreCase = true) || it.detail.contains(search, ignoreCase = true) }
+        visibleGames.forEach { g ->
             Surface(
                 Modifier.fillMaxWidth().clickable { if (g.ready) onGame(g) },
                 color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(17.dp),
@@ -866,6 +873,10 @@ private fun GameDialog(game: Game, onDismiss: () -> Unit) {
         "tap" -> TapChallengeDialog(onDismiss)
         "simon" -> SimonSequenceDialog(onDismiss)
         "higher" -> HigherLowerDialog(onDismiss)
+        "2048" -> Number2048Dialog(onDismiss)
+        "mines" -> MinesweeperDialog(onDismiss)
+        "hangman" -> HangmanDialog(onDismiss)
+        "numMemory" -> NumberMemoryDialog(onDismiss)
         else -> InfoDialog(game.name, "המשחק עדיין בתכנון ולא נכלל בגרסה הנוכחית.") { onDismiss() }
     }
 }
@@ -1444,5 +1455,228 @@ private fun HigherLowerDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+
+private fun new2048Board(): List<Int> = add2048Tile(add2048Tile(List(16) { 0 }))
+
+private fun add2048Tile(board: List<Int>): List<Int> {
+    val empty = board.indices.filter { board[it] == 0 }
+    if (empty.isEmpty()) return board
+    return board.toMutableList().also { it[empty.random()] = if (Random.nextInt(10) == 0) 4 else 2 }
+}
+
+private fun merge2048Line(line: List<Int>): List<Int> {
+    val values = line.filter { it != 0 }.toMutableList()
+    val merged = mutableListOf<Int>()
+    var i = 0
+    while (i < values.size) {
+        if (i + 1 < values.size && values[i] == values[i + 1]) {
+            merged.add(values[i] * 2)
+            i += 2
+        } else {
+            merged.add(values[i])
+            i++
+        }
+    }
+    while (merged.size < 4) merged.add(0)
+    return merged
+}
+
+private fun move2048(board: List<Int>, direction: String): List<Int> {
+    val result = board.toMutableList()
+    for (line in 0..3) {
+        val indexes = when (direction) {
+            "left" -> (0..3).map { line * 4 + it }
+            "right" -> (3 downTo 0).map { line * 4 + it }
+            "up" -> (0..3).map { it * 4 + line }
+            else -> (3 downTo 0).map { it * 4 + line }
+        }
+        val merged = merge2048Line(indexes.map { board[it] })
+        indexes.forEachIndexed { index, cell -> result[cell] = merged[index] }
+    }
+    return result
+}
+
+private fun is2048GameOver(board: List<Int>): Boolean {
+    if (board.any { it == 0 }) return false
+    for (row in 0..3) for (col in 0..3) {
+        val at = row * 4 + col
+        if (col < 3 && board[at] == board[at + 1]) return false
+        if (row < 3 && board[at] == board[at + 4]) return false
+    }
+    return true
+}
+
+@Composable
+private fun Number2048Dialog(onDismiss: () -> Unit) {
+    var board by remember { mutableStateOf(new2048Board()) }
+    var message by remember { mutableStateOf("מזג אריחים זהים כדי להגיע ל־2048") }
+    val won = board.any { it >= 2048 }
+    val over = is2048GameOver(board)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🔢 משחק 2048") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("ניקוד: ${board.sum()}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(if (won) "הגעת ל־2048! אפשר להמשיך לשחק." else if (over) "אין עוד מהלכים. התחל מחדש." else message, fontSize = 12.sp, textAlign = TextAlign.Center)
+                (0..3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (0..3).forEach { col ->
+                            val tile = board[row * 4 + col]
+                            val tileColor = when (tile) {
+                                0 -> MaterialTheme.colorScheme.surfaceVariant
+                                2 -> Color(0xFFECE4D6)
+                                4 -> Color(0xFFE2D0AE)
+                                8 -> Color(0xFFF2B179)
+                                16 -> Color(0xFFF59563)
+                                32 -> Color(0xFFF67C5F)
+                                64 -> Color(0xFFF65E3B)
+                                128, 256 -> Color(0xFFECCB57)
+                                else -> Color(0xFFE7BD2B)
+                            }
+                            Surface(color = tileColor, shape = RoundedCornerShape(7.dp), modifier = Modifier.size(53.dp)) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(if (tile == 0) "" else tile.toString(), color = if (tile >= 8) Color.White else Color(0xFF30291F), fontWeight = FontWeight.Black, fontSize = if (tile >= 128) 14.sp else 18.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    listOf("left" to "←", "up" to "↑", "down" to "↓", "right" to "→").forEach { (direction, label) ->
+                        OutlinedButton(onClick = {
+                            if (!over) {
+                                val moved = move2048(board, direction)
+                                if (moved != board) {
+                                    board = add2048Tile(moved)
+                                    message = "המשיכו למזג מספרים"
+                                }
+                            }
+                        }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) { Text(label, fontSize = 18.sp) }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { board = new2048Board(); message = "משחק חדש — בהצלחה!" }) { Text("משחק חדש") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun MinesweeperDialog(onDismiss: () -> Unit) {
+    fun randomMines() = (0 until 25).shuffled().take(5).toSet()
+    var mines by remember { mutableStateOf(randomMines()) }
+    var revealed by remember { mutableStateOf(setOf<Int>()) }
+    var lost by remember { mutableStateOf(false) }
+    val won = revealed.size == 20 && !lost
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("💣 שולה מוקשים 5×5") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(when { lost -> "פגעת במוקש — נסה שוב"; won -> "ניצחת! כל המשבצות הבטוחות נפתחו"; else -> "פתח משבצות. יש 5 מוקשים בלוח." }, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.primary)
+                (0..4).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (0..4).forEach { col ->
+                            val i = row * 5 + col
+                            val open = i in revealed || lost
+                            val count = (0 until 25).count { other -> other in mines && other != i && abs(other / 5 - row) <= 1 && abs(other % 5 - col) <= 1 }
+                            Surface(
+                                modifier = Modifier.size(42.dp).clickable { if (!lost && !won && i !in revealed) { if (i in mines) lost = true else revealed = revealed + i } },
+                                shape = RoundedCornerShape(7.dp),
+                                color = if (i in revealed) MaterialTheme.colorScheme.primary.copy(alpha = .20f) else MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(when { !open -> "·"; i in mines -> "💣"; count == 0 -> " "; else -> count.toString() }, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { mines = randomMines(); revealed = emptySet(); lost = false }) { Text("משחק חדש") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun HangmanDialog(onDismiss: () -> Unit) {
+    val words = listOf("מחשב", "תוכנה", "טלפון", "משחק", "חלון", "כדור", "מקלדת", "מחברת", "שולחן", "תיק")
+    val alphabet = "אבגדהוזחטיכלמנסעפצקרשת".toList()
+    var word by remember { mutableStateOf(words.random()) }
+    var chosen by remember { mutableStateOf(setOf<Char>()) }
+    var message by remember { mutableStateOf("") }
+    val wrong = chosen.count { it !in word }
+    val won = word.all { it in chosen }
+    val lost = wrong >= 6
+    val finished = won || lost
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🔤 נחש את המילה") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("טעויות: $wrong מתוך 6", fontSize = 12.sp, color = if (lost) Color(0xFFFF8A8A) else MaterialTheme.colorScheme.primary)
+                Text(word.map { if (it in chosen || finished) it else '＿' }.joinToString(" "), fontSize = 25.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                if (finished) Text(if (won) "ניצחת!" else "המילה הייתה: $word", color = MaterialTheme.colorScheme.primary)
+                LazyVerticalGrid(columns = GridCells.Fixed(6), modifier = Modifier.fillMaxWidth().height(170.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    items(alphabet) { letter ->
+                        OutlinedButton(
+                            onClick = { if (!finished) { chosen = chosen + letter; message = if (letter in word) "האות קיימת במילה" else "האות לא נמצאת" } },
+                            enabled = !finished && letter !in chosen,
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.height(34.dp)
+                        ) { Text(letter.toString(), fontSize = 13.sp) }
+                    }
+                }
+                if (message.isNotBlank() && !finished) Text(message, fontSize = 11.sp, color = Color(0xFFADBDB3))
+            }
+        },
+        confirmButton = { TextButton(onClick = { word = words.random(); chosen = emptySet(); message = "" }) { Text("מילה חדשה") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun NumberMemoryDialog(onDismiss: () -> Unit) {
+    var sequence by remember { mutableStateOf(emptyList<Int>()) }
+    var stage by remember { mutableStateOf("idle") }
+    var answer by remember { mutableStateOf("") }
+    var score by remember { mutableIntStateOf(0) }
+    var message by remember { mutableStateOf("זכור את הרצף שיוצג לרגע") }
+    LaunchedEffect(stage) {
+        if (stage == "showing") {
+            delay(1800)
+            stage = "typing"
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🧠 זיכרון מספרים") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(if (stage == "showing") sequence.joinToString(" ") else if (stage == "typing") "הקלד את המספרים לפי הסדר" else message, textAlign = TextAlign.Center, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                if (stage == "typing") OutlinedTextField(answer, { answer = it.filter(Char::isDigit).take(12) }, label = { Text("הרצף שזכרת") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                Text("ניקוד: $score", fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                when (stage) {
+                    "idle" -> { sequence = List((3 + score / 2).coerceAtMost(10)) { Random.nextInt(0, 10) }; answer = ""; stage = "showing" }
+                    "showing" -> Unit
+                    "typing" -> {
+                        if (answer == sequence.joinToString("")) { score++; message = "נכון! הרצף הבא יהיה ארוך יותר." }
+                        else message = "לא נכון. הרצף היה ${sequence.joinToString("")}"
+                        stage = "result"
+                    }
+                    else -> stage = "idle"
+                }
+            }) { Text(when (stage) { "idle" -> "התחל"; "showing" -> "המתן…"; "typing" -> "בדיקה"; else -> "סיבוב נוסף" }) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
     )
 }
