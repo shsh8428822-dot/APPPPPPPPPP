@@ -37,6 +37,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.random.Random
+import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,11 +73,15 @@ private val games = listOf(
     Game("guess", "נחש את המספר", "מצא מספר סודי בין 1 ל־50", "🎯", true),
     Game("tic", "איקס עיגול", "משחק לשני שחקנים באותו מכשיר", "⭕", true),
     Game("math", "אתגר חשבון", "פתור תרגילים וקבל ניקוד", "➗", true),
-    Game("memory", "זיכרון זוגות", "מתוכנן להרחבה", "🧠", false),
-    Game("puzzle", "פאזלים", "מתוכנן להרחבה", "🧩", false),
+    Game("memory", "זיכרון זוגות", "מצא 6 זוגות קלפים", "🧠", true),
+    Game("puzzle", "פאזל מספרים", "סדר את המספרים מ־1 עד 8", "🧩", true),
+    Game("words", "ערבול מילים", "סדר את האותיות לפי הרמז", "🔤", true),
+    Game("reaction", "מבחן תגובה", "בדוק את מהירות התגובה שלך", "⚡", true),
+    Game("dice", "הטלת קובייה", "גלגל קובייה וירטואלית", "🎲", true),
+    Game("coin", "עץ או פלי", "הטלת מטבע אקראית", "🪙", true),
+    Game("sequence", "רצף מספרים", "מצא את המספר הבא", "🔢", true),
     Game("arcade", "ארקייד", "מתוכנן להרחבה", "👾", false),
-    Game("board", "משחקי לוח", "מתוכנן להרחבה", "♟️", false),
-    Game("words", "משחקי מילים", "מתוכנן להרחבה", "🔤", false)
+    Game("board", "משחקי לוח", "מתוכנן להרחבה", "♟️", false)
 )
 
 @Composable
@@ -524,6 +529,13 @@ private fun GameDialog(game: Game, onDismiss: () -> Unit) {
         "guess" -> GuessDialog(onDismiss)
         "tic" -> TicDialog(onDismiss)
         "math" -> MathDialog(onDismiss)
+        "memory" -> MemoryPairsDialog(onDismiss)
+        "puzzle" -> NumberPuzzleDialog(onDismiss)
+        "words" -> WordScrambleDialog(onDismiss)
+        "reaction" -> ReactionDialog(onDismiss)
+        "dice" -> DiceDialog(onDismiss)
+        "coin" -> CoinDialog(onDismiss)
+        "sequence" -> SequenceDialog(onDismiss)
         else -> InfoDialog(game.name, "המשחק עדיין בתכנון ולא נכלל בגרסה הנוכחית.") { onDismiss() }
     }
 }
@@ -600,6 +612,294 @@ private fun MathDialog(onDismiss: () -> Unit) {
             if (answer.toIntOrNull() == a + b) { score++; message = "נכון! ממשיכים."; a = Random.nextInt(2, 30); b = Random.nextInt(2, 30); answer = "" }
             else message = "לא הפעם — נסה שוב."
         }) { Text("בדיקה") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+
+@Composable
+private fun MemoryPairsDialog(onDismiss: () -> Unit) {
+    val cards = remember { listOf("🐱", "🚀", "🌟", "🍀", "🎈", "🍉", "🐱", "🚀", "🌟", "🍀", "🎈", "🍉").shuffled() }
+    var first by remember { mutableStateOf<Int?>(null) }
+    var second by remember { mutableStateOf<Int?>(null) }
+    var matched by remember { mutableStateOf(setOf<Int>()) }
+    var moves by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(second) {
+        val a = first
+        val b = second
+        if (a != null && b != null) {
+            delay(650)
+            if (cards[a] == cards[b]) matched = matched + a + b
+            first = null
+            second = null
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🧠 זיכרון זוגות") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(if (matched.size == cards.size) "כל הזוגות נמצאו! מהלך מצוין 🎉" else "זוגות שנמצאו: ${matched.size / 2} מתוך 6 · מהלכים: $moves", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.fillMaxWidth().height(232.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(cards.indices.toList()) { i ->
+                        val shown = i in matched || i == first || i == second
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable {
+                                if (i !in matched && i != first && second == null) {
+                                    if (first == null) first = i else { second = i; moves++ }
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (i in matched) MaterialTheme.colorScheme.primary.copy(alpha = .20f) else MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(if (shown) cards[i] else "?", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { first = null; second = null; matched = emptySet(); moves = 0 }) { Text("משחק חדש") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+private fun shuffledPuzzle(): List<Int> {
+    val values = (1..8).toMutableList().apply { add(0) }
+    var blank = 8
+    repeat(100) {
+        val options = listOf(
+            blank - 3,
+            blank + 3,
+            if (blank % 3 > 0) blank - 1 else -1,
+            if (blank % 3 < 2) blank + 1 else -1
+        ).filter { it in 0..8 }
+        val next = options.random()
+        values[blank] = values[next]
+        values[next] = 0
+        blank = next
+    }
+    return values
+}
+
+@Composable
+private fun NumberPuzzleDialog(onDismiss: () -> Unit) {
+    var cells by remember { mutableStateOf(shuffledPuzzle()) }
+    var moves by remember { mutableIntStateOf(0) }
+    val solved = cells == ((1..8).toList() + 0)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🧩 פאזל מספרים") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text(if (solved) "נפתר! 🎉" else "סדר את המספרים מ־1 עד 8", color = MaterialTheme.colorScheme.primary)
+                (0..2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        (0..2).forEach { col ->
+                            val i = row * 3 + col
+                            OutlinedButton(
+                                onClick = {
+                                    val blank = cells.indexOf(0)
+                                    val adjacent = (i / 3 == blank / 3 && abs(i % 3 - blank % 3) == 1) ||
+                                        (i % 3 == blank % 3 && abs(i / 3 - blank / 3) == 1)
+                                    if (!solved && cells[i] != 0 && adjacent) {
+                                        val next = cells.toMutableList()
+                                        next[blank] = next[i]
+                                        next[i] = 0
+                                        cells = next
+                                        moves++
+                                    }
+                                },
+                                modifier = Modifier.size(68.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) { Text(if (cells[i] == 0) " " else cells[i].toString(), fontSize = 21.sp, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                }
+                Text("מהלכים: $moves", fontSize = 12.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = { cells = shuffledPuzzle(); moves = 0 }) { Text("ערבוב מחדש") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+private val wordChallenges = listOf(
+    "מחשב" to "מכשיר לעבודה, לימוד ומשחק",
+    "כדור" to "חפץ עגול שמשחקים בו",
+    "ספר" to "קוראים בו סיפורים או מידע",
+    "מפתח" to "פותח מנעול",
+    "שולחן" to "רהיט שאפשר לכתוב או לאכול עליו",
+    "טלפון" to "מכשיר לשיחות ולהודעות",
+    "מחברת" to "כותבים בה",
+    "משקפיים" to "עוזרים לראות בבירור",
+    "כיסא" to "רהיט שיושבים עליו",
+    "דלת" to "דרכה נכנסים לחדר ויוצאים ממנו"
+)
+
+private fun scrambledWord(word: String): String {
+    val shuffled = word.toList().shuffled().joinToString("")
+    return if (shuffled == word && word.length > 1) word.reversed() else shuffled
+}
+
+@Composable
+private fun WordScrambleDialog(onDismiss: () -> Unit) {
+    var challenge by remember { mutableStateOf(wordChallenges.random()) }
+    var scramble by remember { mutableStateOf(scrambledWord(challenge.first)) }
+    var answer by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+    var score by remember { mutableIntStateOf(0) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🔤 ערבול מילים") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("סדר את האותיות למילה הנכונה:", fontSize = 13.sp)
+                Text(scramble, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("רמז: ${challenge.second}", fontSize = 13.sp)
+                OutlinedTextField(answer, { answer = it; message = "" }, label = { Text("המילה") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+                Text("ניקוד: $score", fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (answer.trim().replace(" ", "") == challenge.first) {
+                    score++
+                    message = "נכון מאוד!"
+                    challenge = wordChallenges.filter { it.first != challenge.first }.random()
+                    scramble = scrambledWord(challenge.first)
+                    answer = ""
+                } else message = "לא בדיוק — נסה שוב."
+            }) { Text("בדיקה") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun ReactionDialog(onDismiss: () -> Unit) {
+    var phase by remember { mutableStateOf("idle") }
+    var startedAt by remember { mutableLongStateOf(0L) }
+    var reactionMs by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(phase) {
+        if (phase == "waiting") {
+            delay(Random.nextLong(1500L, 3500L))
+            if (phase == "waiting") {
+                startedAt = System.nanoTime() / 1_000_000L
+                phase = "ready"
+            }
+        }
+    }
+    val title = when (phase) {
+        "waiting" -> "המתן לצבע הירוק…"
+        "ready" -> "עכשיו! לחץ מהר!"
+        "early" -> "לחצת מוקדם מדי"
+        "result" -> "זמן התגובה: $reactionMs מילישניות"
+        else -> "בדוק את מהירות התגובה"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("⚡ מבחן תגובה") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(title, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = {
+                        when (phase) {
+                            "idle", "early", "result" -> { reactionMs = 0L; phase = "waiting" }
+                            "waiting" -> phase = "early"
+                            "ready" -> { reactionMs = (System.nanoTime() / 1_000_000L) - startedAt; phase = "result" }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (phase == "ready") Color(0xFF20C870) else MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(when (phase) { "waiting" -> "לא ללחוץ עדיין"; "ready" -> "לחץ!"; "early" -> "נסה שוב"; "result" -> "שחק שוב"; else -> "התחלה" })
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun DiceDialog(onDismiss: () -> Unit) {
+    var value by remember { mutableIntStateOf(Random.nextInt(1, 7)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🎲 הטלת קובייה") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(listOf("⚀", "⚁", "⚂", "⚃", "⚄", "⚅")[value - 1], fontSize = 78.sp, color = MaterialTheme.colorScheme.primary)
+                Text("יצא המספר $value", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Button(onClick = { value = Random.nextInt(1, 7) }) { Text("גלגל שוב") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun CoinDialog(onDismiss: () -> Unit) {
+    var result by remember { mutableStateOf(if (Random.nextBoolean()) "עץ" else "פלי") }
+    var flips by remember { mutableIntStateOf(1) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🪙 עץ או פלי") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(if (result == "עץ") "🌳" else "🪙", fontSize = 66.sp)
+                Text(result, fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("הטלות: $flips", fontSize = 12.sp)
+                Button(onClick = { result = if (Random.nextBoolean()) "עץ" else "פלי"; flips++ }) { Text("הטל שוב") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun SequenceDialog(onDismiss: () -> Unit) {
+    var start by remember { mutableIntStateOf(Random.nextInt(1, 10)) }
+    var step by remember { mutableIntStateOf(Random.nextInt(2, 7)) }
+    var answer by remember { mutableStateOf("") }
+    var score by remember { mutableIntStateOf(0) }
+    var message by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🔢 רצף מספרים") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("${start}, ${start + step}, ${start + step * 2}, ${start + step * 3}, ?", fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                OutlinedTextField(answer, { answer = it.filter(Char::isDigit).take(4) }, label = { Text("המספר הבא") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                Text("ניקוד: $score")
+                if (message.isNotBlank()) Text(message, fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (answer.toIntOrNull() == start + step * 4) {
+                    score++
+                    message = "נכון!"
+                    start = Random.nextInt(1, 10)
+                    step = Random.nextInt(2, 7)
+                    answer = ""
+                } else message = "נסה לחשב את ההפרש הקבוע."
+            }) { Text("בדיקה") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
     )
 }
