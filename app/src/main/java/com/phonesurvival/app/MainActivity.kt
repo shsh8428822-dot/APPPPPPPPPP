@@ -294,7 +294,7 @@ private fun ToolsScreen(onAction: (String) -> Unit) {
                 }
             }
         }
-        Text("פנס ומצפן מסומנים כממתינים למימוש חומרה והרשאות.", fontSize = 12.sp, color = Color(0xFFADBDB3))
+        Text("הפנס מבקש הרשאת מצלמה בעת הפעלה; המצפן פועל אם המכשיר כולל חיישן כיוון תואם.", fontSize = 12.sp, color = Color(0xFFADBDB3))
     }
 }
 
