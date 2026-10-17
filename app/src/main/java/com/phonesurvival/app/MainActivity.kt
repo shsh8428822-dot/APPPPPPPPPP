@@ -311,16 +311,16 @@ private fun GamesScreen(onGame: (Game) -> Unit) {
 @Composable
 private fun VaultLanding(p: AppPalette, onOpen: () -> Unit) {
     Page {
-        Text("הכספת הפרטית", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text("הזיכרון השחור", fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Surface(color = p.panel, shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, p.accent.copy(alpha = .3f))) {
             Column(Modifier.fillMaxWidth().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(13.dp)) {
                 Text("🔐", fontSize = 52.sp)
-                Text("פתקים מוצפנים במכשיר", fontSize = 19.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                Text("הטקסט מוצפן עם AES-GCM ומפתח שמופק מהסיסמה. אם תאבד את הסיסמה, ייתכן שלא ניתן יהיה לשחזר את המידע.", textAlign = TextAlign.Center, fontSize = 13.sp, color = Color(0xFFADBDB3))
+                Text("תוכן פרטי עם סיסמה", fontSize = 19.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Text("התוכן מוצפן במכשיר באמצעות AES-GCM ומפתח שמופק מהסיסמה. לאחר חמישה ניסיונות שגויים, הגישה ננעלת זמנית. אם תאבד את הסיסמה, לא ניתן יהיה לשחזר את התוכן."), textAlign = TextAlign.Center, fontSize = 13.sp, color = Color(0xFFADBDB3))
                 Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text("פתיחה או יצירת כספת") }
             }
         }
-        Text("הגרסה הראשונית שומרת פתקים מוצפנים. קבצים מצורפים וגיבוי מוצפן מתוכננים לשלב הבא.", fontSize = 12.sp, color = Color(0xFFADBDB3))
+        Text("התוכן נשמר מקומית בלבד. הקפד לבחור סיסמה חזקה ולשמור אותה במקום בטוח.", fontSize = 12.sp, color = Color(0xFFADBDB3))
     }
 }
 
@@ -431,7 +431,6 @@ private fun NotesDialog(prefs: android.content.SharedPreferences, onDismiss: () 
     )
 }
 
-@Composable
 @Composable
 private fun CountdownDialog(onDismiss: () -> Unit) {
     var minutes by remember { mutableStateOf("5") }
@@ -646,6 +645,7 @@ private fun CompassDialog(context: Context, onDismiss: () -> Unit) {
     )
 }
 
+@Composable
 private fun StopwatchDialog(onDismiss: () -> Unit) {
     var seconds by remember { mutableIntStateOf(0) }
     var running by remember { mutableStateOf(false) }
@@ -671,31 +671,94 @@ private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () 
     var unlocked by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var saved by remember { mutableStateOf(false) }
+    var failedAttempts by remember { mutableIntStateOf(prefs.getInt("vault_failed_attempts", 0)) }
+    var lockedUntil by remember { mutableLongStateOf(prefs.getLong("vault_locked_until", 0L)) }
+    var changePasswordMode by remember { mutableStateOf(false) }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmNewPassword by remember { mutableStateOf("") }
+    val locked = lockedUntil > System.currentTimeMillis()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (unlocked) "הכספת פתוחה" else if (vault.exists()) "פתיחת הכספת" else "יצירת כספת") },
+        title = { Text(if (unlocked) "הזיכרון השחור פתוח" else if (vault.exists()) "פתיחת הזיכרון השחור" else "יצירת זיכרון שחור") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 if (!unlocked) {
-                    Text(if (vault.exists()) "הזן את הסיסמה כדי לפענח את התוכן." else "צור סיסמה באורך 10 תווים לפחות. הסיסמה עצמה אינה נשמרת.", fontSize = 12.sp, color = Color(0xFFADBDB3))
-                    OutlinedTextField(password, { password = it; error = "" }, modifier = Modifier.fillMaxWidth(), label = { Text("סיסמה") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                    Text(if (vault.exists()) "התוכן מוצפן במכשיר ונפתח רק באמצעות הסיסמה." else "צור סיסמה באורך 10 תווים לפחות. הסיסמה עצמה אינה נשמרת.", fontSize = 12.sp, color = Color(0xFFADBDB3))
+                    OutlinedTextField(password, { password = it; error = "" }, modifier = Modifier.fillMaxWidth(), label = { Text("סיסמה") }, singleLine = true, enabled = !locked, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                    if (locked) Text("הגישה נעולה זמנית. נסה שוב בעוד ${((lockedUntil - System.currentTimeMillis()) / 1000).coerceAtLeast(1)} שניות.", fontSize = 12.sp, color = Color(0xFFFFD166))
                     if (error.isNotBlank()) Text(error, color = Color(0xFFFF8A8A), fontSize = 12.sp)
                 } else {
-                    OutlinedTextField(note, { note = it; saved = false }, modifier = Modifier.fillMaxWidth().height(175.dp), label = { Text("פתקים מוצפנים") })
+                    OutlinedTextField(note, { note = it; saved = false }, modifier = Modifier.fillMaxWidth().height(175.dp), label = { Text("תוכן מוצפן") })
+                    if (changePasswordMode) {
+                        OutlinedTextField(newPassword, { newPassword = it; error = "" }, modifier = Modifier.fillMaxWidth(), label = { Text("סיסמה חדשה (10 תווים לפחות)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                        OutlinedTextField(confirmNewPassword, { confirmNewPassword = it; error = "" }, modifier = Modifier.fillMaxWidth(), label = { Text("אימות סיסמה חדשה") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                    }
                     if (saved) Text("נשמר בהצפנה", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
                     if (error.isNotBlank()) Text(error, color = Color(0xFFFF8A8A), fontSize = 12.sp)
                 }
             }
         },
         confirmButton = {
-            if (!unlocked) TextButton(onClick = {
+            if (!unlocked) TextButton(enabled = !locked, onClick = {
+                val now = System.currentTimeMillis()
                 when {
+                    lockedUntil > now -> error = "הגישה נעולה זמנית."
                     password.length < 10 -> error = "יש לבחור סיסמה בת 10 תווים לפחות."
-                    !vault.exists() -> try { vault.create(password); unlocked = true } catch (_: Exception) { error = "יצירת הכספת נכשלה." }
-                    else -> { val result = vault.open(password); if (result == null) error = "סיסמה שגויה או מידע פגום." else { note = result; unlocked = true } }
+                    !vault.exists() -> try {
+                        vault.create(password)
+                        unlocked = true
+                        failedAttempts = 0
+                        prefs.edit().remove("vault_failed_attempts").remove("vault_locked_until").apply()
+                    } catch (_: Exception) { error = "יצירת הכספת נכשלה." }
+                    else -> {
+                        val result = vault.open(password)
+                        if (result == null) {
+                            failedAttempts++
+                            if (failedAttempts >= 5) {
+                                lockedUntil = now + 60_000L
+                                failedAttempts = 0
+                                prefs.edit().putLong("vault_locked_until", lockedUntil).putInt("vault_failed_attempts", 0).apply()
+                                error = "יותר מדי ניסיונות. הגישה ננעלה לדקה."
+                            } else {
+                                prefs.edit().putInt("vault_failed_attempts", failedAttempts).apply()
+                                error = "סיסמה שגויה. נותרו ${5 - failedAttempts} ניסיונות לפני נעילה זמנית."
+                            }
+                        } else {
+                            note = result
+                            unlocked = true
+                            failedAttempts = 0
+                            lockedUntil = 0L
+                            prefs.edit().remove("vault_failed_attempts").remove("vault_locked_until").apply()
+                        }
+                    }
                 }
             }) { Text(if (vault.exists()) "פתיחה" else "יצירה") }
-            else TextButton(onClick = { try { vault.save(password, note); saved = true } catch (_: Exception) { error = "השמירה נכשלה." } }) { Text("שמירה מוצפנת") }
+            else {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    TextButton(onClick = {
+                        try { vault.save(password, note); saved = true; error = "" }
+                        catch (_: Exception) { error = "השמירה נכשלה." }
+                    }) { Text("שמירה מוצפנת") }
+                    TextButton(onClick = {
+                        if (!changePasswordMode) {
+                            changePasswordMode = true
+                            error = ""
+                        } else when {
+                            newPassword.length < 10 -> error = "הסיסמה החדשה צריכה להכיל 10 תווים לפחות."
+                            newPassword != confirmNewPassword -> error = "הסיסמאות החדשות אינן תואמות."
+                            else -> try {
+                                vault.save(newPassword, note)
+                                password = newPassword
+                                newPassword = ""
+                                confirmNewPassword = ""
+                                changePasswordMode = false
+                                saved = true
+                                error = ""
+                            } catch (_: Exception) { error = "שינוי הסיסמה נכשל." }
+                        }
+                    }) { Text(if (changePasswordMode) "אישור סיסמה חדשה" else "שינוי סיסמה") }
+                }
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
     )
@@ -1162,5 +1225,218 @@ private fun SequenceDialog(onDismiss: () -> Unit) {
             }) { Text("בדיקה") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+
+@Composable
+private fun RockPaperScissorsDialog(onDismiss: () -> Unit) {
+    val choices = listOf("אבן", "נייר", "מספריים")
+    val icons = mapOf("אבן" to "✊", "נייר" to "✋", "מספריים" to "✌️")
+    var user by remember { mutableStateOf("") }
+    var cpu by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf("בחר את המהלך שלך") }
+    var wins by remember { mutableIntStateOf(0) }
+    var losses by remember { mutableIntStateOf(0) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("✊ אבן, נייר ומספריים") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(result, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
+                if (user.isNotBlank()) Text("אתה: ${icons[user]}    מחשב: ${icons[cpu]}", fontSize = 20.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    choices.forEach { pick ->
+                        OutlinedButton(onClick = {
+                            user = pick
+                            cpu = choices.random()
+                            result = when {
+                                user == cpu -> "תיקו!"
+                                (user == "אבן" && cpu == "מספריים") || (user == "נייר" && cpu == "אבן") || (user == "מספריים" && cpu == "נייר") -> { wins++; "ניצחת!" }
+                                else -> { losses++; "המחשב ניצח הפעם" }
+                            }
+                        }) { Text("${icons[pick]}\n$pick", textAlign = TextAlign.Center) }
+                    }
+                }
+                Text("ניצחונות: $wins · הפסדים: $losses", fontSize = 12.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+private data class QuizQuestion(val question: String, val options: List<String>, val answer: Int)
+private val offlineQuizQuestions = listOf(
+    QuizQuestion("כמה דקות יש בשעה?", listOf("30", "60", "90", "100"), 1),
+    QuizQuestion("איזה כוכב לכת קרוב ביותר לשמש?", listOf("מאדים", "נוגה", "כוכב חמה", "צדק"), 2),
+    QuizQuestion("כמה צלעות יש למשולש?", listOf("2", "3", "4", "5"), 1),
+    QuizQuestion("מה התוצאה של 9 × 7?", listOf("56", "63", "72", "79"), 1),
+    QuizQuestion("איזה חומר קופא ב־0°C בתנאים רגילים?", listOf("מים", "שמן", "אלכוהול", "כספית"), 0),
+    QuizQuestion("כמה ימים יש בשנה רגילה?", listOf("360", "364", "365", "366"), 2),
+    QuizQuestion("מהו המספר הראשוני הקטן ביותר?", listOf("0", "1", "2", "3"), 2),
+    QuizQuestion("כמה צדדים יש למשושה?", listOf("5", "6", "7", "8"), 1),
+    QuizQuestion("מהו חצי מ־144?", listOf("62", "72", "82", "74"), 1),
+    QuizQuestion("איזה כיוון נמצא מול צפון?", listOf("מזרח", "מערב", "דרום", "צפון־מזרח"), 2)
+)
+
+@Composable
+private fun OfflineQuizDialog(onDismiss: () -> Unit) {
+    var index by remember { mutableIntStateOf(0) }
+    var score by remember { mutableIntStateOf(0) }
+    var finished by remember { mutableStateOf(false) }
+    var feedback by remember { mutableStateOf("") }
+    val question = offlineQuizQuestions[index.coerceAtMost(offlineQuizQuestions.lastIndex)]
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("❓ חידון ידע לא מקוון") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (finished) "סיימת את החידון!" else "שאלה ${index + 1} מתוך ${offlineQuizQuestions.size}", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+                if (finished) {
+                    Text("הניקוד שלך: $score מתוך ${offlineQuizQuestions.size}", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                } else {
+                    Text(question.question, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    question.options.forEachIndexed { optionIndex, option ->
+                        OutlinedButton(
+                            onClick = {
+                                if (optionIndex == question.answer) score++
+                                feedback = if (optionIndex == question.answer) "נכון!" else "לא נכון. התשובה הנכונה: ${question.options[question.answer]}"
+                                if (index == offlineQuizQuestions.lastIndex) finished = true else index++
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(option) }
+                    }
+                }
+                if (feedback.isNotBlank()) Text(feedback, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = { if (finished) onDismiss() else { index = 0; score = 0; finished = false; feedback = "" } }) { Text(if (finished) "סיום" else "איפוס") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun TapChallengeDialog(onDismiss: () -> Unit) {
+    var active by remember { mutableStateOf(false) }
+    var timeLeft by remember { mutableIntStateOf(10) }
+    var taps by remember { mutableIntStateOf(0) }
+    LaunchedEffect(active) {
+        while (active && timeLeft > 0) {
+            delay(1000)
+            timeLeft = (timeLeft - 1).coerceAtLeast(0)
+        }
+        if (timeLeft == 0) active = false
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("👆 אתגר הקשות") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("זמן: $timeLeft שניות", fontSize = 16.sp)
+                Text("לחיצות: $taps", fontSize = 30.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                Button(
+                    onClick = {
+                        if (!active) { taps = 0; timeLeft = 10; active = true } else taps++
+                    },
+                    modifier = Modifier.fillMaxWidth().height(65.dp)
+                ) { Text(if (active) "לחץ כאן מהר!" else if (timeLeft == 0) "נסה שוב" else "התחלת אתגר", fontSize = 18.sp) }
+                if (!active && timeLeft == 0) Text("הקצב שלך: ${taps / 10.0} לחיצות לשנייה", fontSize = 12.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun SimonSequenceDialog(onDismiss: () -> Unit) {
+    val colors = listOf(Color(0xFFEF5350), Color(0xFF42A5F5), Color(0xFF66BB6A), Color(0xFFFFCA28))
+    val labels = listOf("אדום", "כחול", "ירוק", "צהוב")
+    var pattern by remember { mutableStateOf(emptyList<Int>()) }
+    var flash by remember { mutableIntStateOf(-1) }
+    var stage by remember { mutableStateOf("idle") }
+    var inputIndex by remember { mutableIntStateOf(0) }
+    var roundTrigger by remember { mutableIntStateOf(0) }
+    LaunchedEffect(roundTrigger) {
+        if (stage == "showing") {
+            val currentPattern = pattern
+            currentPattern.forEach { item ->
+                flash = item
+                delay(420)
+                flash = -1
+                delay(180)
+            }
+            stage = "input"
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🎨 זכור את הרצף") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(when (stage) { "showing" -> "הסתכל על הרצף"; "input" -> "חזור על הרצף"; "over" -> "טעות! הרצף היה באורך ${pattern.size}"; else -> "התחל ונסה לזכור את הצבעים" }, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.primary)
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    colors.forEachIndexed { index, color ->
+                        Button(
+                            enabled = stage == "input",
+                            onClick = {
+                                if (pattern.getOrNull(inputIndex) == index) {
+                                    if (inputIndex == pattern.lastIndex) {
+                                        pattern = pattern + Random.nextInt(0, colors.size)
+                                        inputIndex = 0
+                                        stage = "showing"
+                                        roundTrigger++
+                                    } else inputIndex++
+                                } else stage = "over"
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (flash == index) Color.White else color),
+                            modifier = Modifier.size(58.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) { Text(if (flash == index) "●" else listOf("●", "●", "●", "●")[index], color = if (flash == index) Color.Black else Color.White, fontSize = 22.sp) }
+                    }
+                }
+                if (stage == "idle" || stage == "over") {
+                    Button(onClick = { pattern = List(3) { Random.nextInt(0, colors.size) }; inputIndex = 0; flash = -1; stage = "showing"; roundTrigger++ }) { Text("התחל משחק") }
+                }
+                if (stage == "input") Text("צבע ${inputIndex + 1} מתוך ${pattern.size}", fontSize = 12.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun HigherLowerDialog(onDismiss: () -> Unit) {
+    var current by remember { mutableIntStateOf(Random.nextInt(1, 14)) }
+    var score by remember { mutableIntStateOf(0) }
+    var rounds by remember { mutableIntStateOf(0) }
+    var message by remember { mutableStateOf("האם הקלף הבא יהיה גבוה או נמוך יותר?") }
+    var last by remember { mutableIntStateOf(0) }
+    fun guess(higher: Boolean) {
+        val next = Random.nextInt(1, 14)
+        last = next
+        rounds++
+        if (next == current) message = "יצא אותו ערך ($next) — תיקו"
+        else if ((next > current) == higher) { score++; message = "נכון! הקלף הבא היה $next" }
+        else { score = 0; message = "לא הפעם — הקלף היה $next. הרצף התאפס." }
+        current = next
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🃏 גבוה או נמוך") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("הקלף הנוכחי", fontSize = 12.sp, color = Color(0xFFADBDB3))
+                Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(18.dp), modifier = Modifier.size(92.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Text(listOf("", "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")[current], fontSize = 36.sp, fontWeight = FontWeight.Black) }
+                }
+                Text(message, textAlign = TextAlign.Center, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { guess(true) }) { Text("גבוה יותר ↑") }
+                    OutlinedButton(onClick = { guess(false) }) { Text("נמוך יותר ↓") }
+                }
+                Text("ניקוד רציף: $score · סיבובים: $rounds", fontSize = 12.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
     )
 }
