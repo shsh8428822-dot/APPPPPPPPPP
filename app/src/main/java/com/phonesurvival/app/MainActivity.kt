@@ -1,10 +1,23 @@
 package com.phonesurvival.app
 
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.os.BatteryManager
 import android.os.Bundle
 import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -341,7 +354,8 @@ private fun SettingsScreen(p: AppPalette, selected: String, onPalette: (String) 
             }
             Switch(checked = compact, onCheckedChange = onCompact)
         }
-        FeatureRow("🛡️", "פרטיות", "אין הרשאת אינטרנט במניפסט", p) {}\n        FeatureRow("🎮", "משחקים לא מקוונים", "${games.count { it.ready }} משחקונים פעילים בגרסה זו", p) {}
+        FeatureRow("🛡️", "פרטיות", "אין הרשאת אינטרנט במניפסט", p) {}
+        FeatureRow("🎮", "משחקים לא מקוונים", "${games.count { it.ready }} משחקונים פעילים בגרסה זו", p) {}
         FeatureRow("ℹ️", "אודות", "PHONE SURVIVAL · גרסה 1.0.0", p) {}
         OutlinedButton(onClick = { resetConfirm = true }, modifier = Modifier.fillMaxWidth()) { Text("איפוס צבע לעיצוב המקורי") }
     }
@@ -418,6 +432,220 @@ private fun NotesDialog(prefs: android.content.SharedPreferences, onDismiss: () 
 }
 
 @Composable
+@Composable
+private fun CountdownDialog(onDismiss: () -> Unit) {
+    var minutes by remember { mutableStateOf("5") }
+    var remaining by remember { mutableIntStateOf(300) }
+    var running by remember { mutableStateOf(false) }
+    var configured by remember { mutableStateOf(false) }
+    var finished by remember { mutableStateOf(false) }
+    LaunchedEffect(running) {
+        while (running && remaining > 0) {
+            delay(1000)
+            remaining = (remaining - 1).coerceAtLeast(0)
+        }
+        if (remaining == 0) {
+            running = false
+            finished = true
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("⏳ טיימר ספירה לאחור") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(String.format("%02d:%02d", remaining / 60, remaining % 60), fontSize = 38.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                if (!configured || (!running && remaining == 0)) {
+                    OutlinedTextField(minutes, { minutes = it.filter(Char::isDigit).take(3); finished = false }, label = { Text("משך בדקות (1–999)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                }
+                if (finished) Text("הזמן הסתיים!", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        if (!configured || remaining == 0) {
+                            remaining = ((minutes.toIntOrNull() ?: 5).coerceIn(1, 999)) * 60
+                            configured = true
+                        }
+                        finished = false
+                        running = true
+                    }) { Text(if (running) "פועל" else if (configured && remaining > 0) "המשך" else "התחלה") }
+                    OutlinedButton(onClick = { running = false; remaining = ((minutes.toIntOrNull() ?: 5).coerceIn(1, 999)) * 60; configured = false; finished = false }) { Text("איפוס") }
+                }
+                if (running) Text("הספירה פועלת כשהחלון פתוח.", fontSize = 11.sp, color = Color(0xFFADBDB3))
+            }
+        },
+        confirmButton = { TextButton(onClick = { running = false; onDismiss() }) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun UnitConverterDialog(onDismiss: () -> Unit) {
+    var input by remember { mutableStateOf("1") }
+    var mode by remember { mutableStateOf("אורך") }
+    val value = input.toDoubleOrNull()
+    val output = if (value == null) "הזן מספר תקין" else when (mode) {
+        "אורך" -> String.format(java.util.Locale.US, "%.4f קילומטר", value / 1000.0)
+        "משקל" -> String.format(java.util.Locale.US, "%.3f פאונד", value * 2.2046226218)
+        else -> String.format(java.util.Locale.US, "%.2f°F", value * 9.0 / 5.0 + 32.0)
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("📐 המרת יחידות") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    listOf("אורך", "משקל", "טמפרטורה").forEach { option ->
+                        FilterChip(selected = mode == option, onClick = { mode = option }, label = { Text(option) })
+                    }
+                }
+                Text(when (mode) { "אורך" -> "מטרים לקילומטרים"; "משקל" -> "קילוגרמים לפאונדים"; else -> "צלזיוס לפרנהייט" }, fontSize = 12.sp, color = Color(0xFFADBDB3))
+                OutlinedTextField(input, { input = it.filter { ch -> ch.isDigit() || ch == '.' || ch == '-' }.take(18) }, label = { Text("ערך להמרה") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+                Text(output, fontSize = 21.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun RandomNumberDialog(onDismiss: () -> Unit) {
+    var minimum by remember { mutableStateOf("1") }
+    var maximum by remember { mutableStateOf("100") }
+    var result by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🎲 הגרלת מספר אקראי") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                OutlinedTextField(minimum, { minimum = it.filter { ch -> ch.isDigit() || ch == '-' }.take(8); error = "" }, label = { Text("מינימום") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(maximum, { maximum = it.filter { ch -> ch.isDigit() || ch == '-' }.take(8); error = "" }, label = { Text("מקסימום") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                if (result.isNotBlank()) Text(result, fontSize = 34.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                if (error.isNotBlank()) Text(error, color = Color(0xFFFF8A8A), fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val lo = minimum.toIntOrNull()
+                val hi = maximum.toIntOrNull()
+                when {
+                    lo == null || hi == null -> error = "יש להזין שני מספרים."
+                    lo > hi -> error = "המינימום חייב להיות קטן מהמקסימום."
+                    hi.toLong() - lo.toLong() > 2_000_000L -> error = "בחר טווח של עד שני מיליון."
+                    else -> { result = (lo + SecureRandom().nextInt((hi.toLong() - lo.toLong() + 1).toInt())).toString(); error = "" }
+                }
+            }) { Text("הגרל") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun BatteryInfoDialog(context: Context, onDismiss: () -> Unit) {
+    val info = remember(context) {
+        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val percent = if (level >= 0 && scale > 0) (level * 100 / scale).coerceIn(0, 100) else -1
+        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val label = when (status) {
+            BatteryManager.BATTERY_STATUS_CHARGING -> "הסוללה בטעינה"
+            BatteryManager.BATTERY_STATUS_FULL -> "הסוללה מלאה"
+            BatteryManager.BATTERY_STATUS_DISCHARGING -> "המכשיר משתמש בסוללה"
+            else -> "מצב הטעינה לא זמין"
+        }
+        percent to label
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🔋 מצב הסוללה") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(if (info.first >= 0) "${info.first}%" else "לא זמין", fontSize = 42.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                Text(info.second)
+                Text("הנתונים נקראים מהמכשיר ואינם נשלחים לרשת.", fontSize = 11.sp, color = Color(0xFFADBDB3), textAlign = TextAlign.Center)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun FlashlightDialog(context: Context, onDismiss: () -> Unit) {
+    var granted by remember { mutableStateOf(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+    var enabled by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
+        granted = allowed
+        if (!allowed) error = "נדרשת הרשאת מצלמה כדי להפעיל את המבזק."
+    }
+    val manager = remember(context) { context.getSystemService(Context.CAMERA_SERVICE) as CameraManager }
+    val cameraId = remember(manager) {
+        runCatching {
+            manager.cameraIdList.firstOrNull { id -> manager.getCameraCharacteristics(id).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true }
+        }.getOrNull()
+    }
+    DisposableEffect(enabled, granted, cameraId) {
+        if (granted && enabled && cameraId != null) {
+            runCatching { manager.setTorchMode(cameraId, true) }.onFailure { error = "לא ניתן להפעיל את המבזק במכשיר הזה." }
+        } else if (granted && !enabled && cameraId != null) {
+            runCatching { manager.setTorchMode(cameraId, false) }
+        }
+        onDispose {
+            if (granted && cameraId != null) runCatching { manager.setTorchMode(cameraId, false) }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = { enabled = false; onDismiss() },
+        title = { Text("🔦 פנס") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(if (cameraId == null) "לא נמצא מבזק תואם במכשיר." else if (enabled) "הפנס דולק." else "הפעל או כבה את מבזק המכשיר.")
+                Text("ההרשאה נועדה לשליטה במבזק בלבד.", fontSize = 11.sp, color = Color(0xFFADBDB3))
+                if (error.isNotBlank()) Text(error, color = Color(0xFFFF8A8A), fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            Button(enabled = cameraId != null, onClick = {
+                if (!granted) permissionLauncher.launch(Manifest.permission.CAMERA) else enabled = !enabled
+            }) { Text(if (enabled) "כבה פנס" else if (granted) "הדלק פנס" else "מתן הרשאה") }
+        },
+        dismissButton = { TextButton(onClick = { enabled = false; onDismiss() }) { Text("סגירה") } }
+    )
+}
+
+@Composable
+private fun CompassDialog(context: Context, onDismiss: () -> Unit) {
+    val sensorManager = remember(context) { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
+    val sensor = remember(sensorManager) { sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) }
+    var heading by remember { mutableFloatStateOf(Float.NaN) }
+    DisposableEffect(sensor) {
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val rotation = FloatArray(9)
+                val orientation = FloatArray(3)
+                SensorManager.getRotationMatrixFromVector(rotation, event.values)
+                SensorManager.getOrientation(rotation, orientation)
+                heading = ((Math.toDegrees(orientation[0].toDouble()).toFloat() + 360f) % 360f)
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        if (sensor != null) sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI)
+        onDispose { sensorManager.unregisterListener(listener) }
+    }
+    val direction = if (heading.isNaN()) "ממתין לחיישן…" else listOf("צפון", "צפון־מזרח", "מזרח", "דרום־מזרח", "דרום", "דרום־מערב", "מערב", "צפון־מערב")[(((heading + 22.5f) / 45f).toInt() % 8)]
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🧭 מצפן") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (sensor == null) "המכשיר אינו מספק חיישן כיוון תואם." else direction, fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                if (sensor != null) Text(if (heading.isNaN()) "סובב את המכשיר בעדינות." else "כיוון: ${heading.toInt()}°", fontSize = 15.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
+    )
+}
+
 private fun StopwatchDialog(onDismiss: () -> Unit) {
     var seconds by remember { mutableIntStateOf(0) }
     var running by remember { mutableStateOf(false) }
@@ -527,14 +755,16 @@ private fun PasswordDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun EmergencyDialog(onDismiss: () -> Unit) {
-    val items = listOf("שמור על סוללת המכשיר", "ודא גישה לפנס ולתאורה בטוחה", "שמור אנשי קשר לשעת חירום", "בדוק מים וציוד חיוני", "עדכן אדם קרוב על מצבך")
-    var checked by remember { mutableStateOf(setOf<Int>()) }
+private fun EmergencyDialog(prefs: android.content.SharedPreferences, onDismiss: () -> Unit) {
+    val items = listOf("שמור על סוללת המכשיר", "ודא גישה לפנס ולתאורה בטוחה", "שמור אנשי קשר לשעת חירום", "עדכן אנשי קשר לשעת חירום", "בדוק מים וציוד חיוני", "שמור מטען או סוללה ניידת")
+    var checked by remember {
+        mutableStateOf(prefs.getString("emergency_checked", "").orEmpty().split(",").mapNotNull { it.toIntOrNull() }.toSet())
+    }
     AlertDialog(
         onDismissRequest = onDismiss, title = { Text("רשימת בדיקה לחירום") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
             items.forEachIndexed { i, item ->
-                Row(Modifier.fillMaxWidth().clickable { checked = if (i in checked) checked - i else checked + i }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().clickable { checked = if (i in checked) checked - i else checked + i; prefs.edit().putString("emergency_checked", checked.sorted().joinToString(",")).apply() }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(if (i in checked) "☑" else "□", color = MaterialTheme.colorScheme.primary, fontSize = 20.sp)
                     Text(item, fontSize = 13.sp)
                 }
@@ -562,6 +792,11 @@ private fun GameDialog(game: Game, onDismiss: () -> Unit) {
         "dice" -> DiceDialog(onDismiss)
         "coin" -> CoinDialog(onDismiss)
         "sequence" -> SequenceDialog(onDismiss)
+        "rps" -> RockPaperScissorsDialog(onDismiss)
+        "quiz" -> OfflineQuizDialog(onDismiss)
+        "tap" -> TapChallengeDialog(onDismiss)
+        "simon" -> SimonSequenceDialog(onDismiss)
+        "higher" -> HigherLowerDialog(onDismiss)
         else -> InfoDialog(game.name, "המשחק עדיין בתכנון ולא נכלל בגרסה הנוכחית.") { onDismiss() }
     }
 }
