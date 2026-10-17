@@ -322,7 +322,7 @@ private fun VaultLanding(p: AppPalette, onOpen: () -> Unit) {
             Column(Modifier.fillMaxWidth().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(13.dp)) {
                 Text("🔐", fontSize = 52.sp)
                 Text("תוכן פרטי עם סיסמה", fontSize = 19.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                Text("התוכן מוצפן במכשיר באמצעות AES-GCM ומפתח שמופק מהסיסמה. לאחר חמישה ניסיונות שגויים, הגישה ננעלת זמנית. אם תאבד את הסיסמה, לא ניתן יהיה לשחזר את התוכן."), textAlign = TextAlign.Center, fontSize = 13.sp, color = Color(0xFFADBDB3))
+                Text("התוכן מוצפן במכשיר באמצעות AES-GCM ומפתח שמופק מהסיסמה. לאחר חמישה ניסיונות שגויים, הגישה ננעלת זמנית. אם תאבד את הסיסמה, לא ניתן יהיה לשחזר את התוכן.", textAlign = TextAlign.Center, fontSize = 13.sp, color = Color(0xFFADBDB3))
                 Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text("פתיחה או יצירת כספת") }
             }
         }
@@ -362,7 +362,7 @@ private fun SettingsScreen(p: AppPalette, selected: String, onPalette: (String) 
         }
         FeatureRow("🛡️", "פרטיות", "אין הרשאת אינטרנט במניפסט", p) {}
         FeatureRow("🎮", "משחקים לא מקוונים", "${games.count { it.ready }} משחקונים פעילים בגרסה זו", p) {}
-        FeatureRow("ℹ️", "אודות", "PHONE SURVIVAL · גרסה 1.0.0", p) {}
+        FeatureRow("ℹ️", "אודות", "PHONE SURVIVAL · גרסה 1.1.0", p) {}
         OutlinedButton(onClick = { resetConfirm = true }, modifier = Modifier.fillMaxWidth()) { Text("איפוס צבע לעיצוב המקורי") }
     }
     if (resetConfirm) {
