@@ -113,7 +113,6 @@ private val games = listOf(
     Game("board", "משחקי לוח", "מתוכנן להרחבה", "♟️", false)
 )
 
-@Composable
 private val LocalCompactMode = compositionLocalOf { false }
 
 @Composable
@@ -363,7 +362,7 @@ private fun SettingsScreen(p: AppPalette, selected: String, onPalette: (String) 
         AlertDialog(
             onDismissRequest = { resetConfirm = false }, title = { Text("לאפס עיצוב?") },
             text = { Text("הצבע יחזור לשחור וירוק. הפתקים והכספת לא יימחקו.") },
-            confirmButton = { TextButton(onClick = { onPalette("green"); compact = false; prefs.edit().putBoolean("compact", false).apply(); resetConfirm = false }) { Text("איפוס") } },
+            confirmButton = { TextButton(onClick = { onPalette("green"); onCompact(false); resetConfirm = false }) { Text("איפוס") } },
             dismissButton = { TextButton(onClick = { resetConfirm = false }) { Text("ביטול") } }
         )
     }
@@ -673,10 +672,17 @@ private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () 
     var saved by remember { mutableStateOf(false) }
     var failedAttempts by remember { mutableIntStateOf(prefs.getInt("vault_failed_attempts", 0)) }
     var lockedUntil by remember { mutableLongStateOf(prefs.getLong("vault_locked_until", 0L)) }
+    var clockNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(lockedUntil) {
+        while (clockNow < lockedUntil) {
+            delay(1000)
+            clockNow = System.currentTimeMillis()
+        }
+    }
     var changePasswordMode by remember { mutableStateOf(false) }
     var newPassword by remember { mutableStateOf("") }
     var confirmNewPassword by remember { mutableStateOf("") }
-    val locked = lockedUntil > System.currentTimeMillis()
+    val locked = lockedUntil > clockNow
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (unlocked) "הזיכרון השחור פתוח" else if (vault.exists()) "פתיחת הזיכרון השחור" else "יצירת זיכרון שחור") },
@@ -685,7 +691,7 @@ private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () 
                 if (!unlocked) {
                     Text(if (vault.exists()) "התוכן מוצפן במכשיר ונפתח רק באמצעות הסיסמה." else "צור סיסמה באורך 10 תווים לפחות. הסיסמה עצמה אינה נשמרת.", fontSize = 12.sp, color = Color(0xFFADBDB3))
                     OutlinedTextField(password, { password = it; error = "" }, modifier = Modifier.fillMaxWidth(), label = { Text("סיסמה") }, singleLine = true, enabled = !locked, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-                    if (locked) Text("הגישה נעולה זמנית. נסה שוב בעוד ${((lockedUntil - System.currentTimeMillis()) / 1000).coerceAtLeast(1)} שניות.", fontSize = 12.sp, color = Color(0xFFFFD166))
+                    if (locked) Text("הגישה נעולה זמנית. נסה שוב בעוד ${((lockedUntil - clockNow) / 1000).coerceAtLeast(1)} שניות.", fontSize = 12.sp, color = Color(0xFFFFD166))
                     if (error.isNotBlank()) Text(error, color = Color(0xFFFF8A8A), fontSize = 12.sp)
                 } else {
                     OutlinedTextField(note, { note = it; saved = false }, modifier = Modifier.fillMaxWidth().height(175.dp), label = { Text("תוכן מוצפן") })
