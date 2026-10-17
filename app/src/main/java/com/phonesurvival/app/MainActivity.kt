@@ -14,6 +14,10 @@ import android.hardware.camera2.CameraManager
 import android.os.BatteryManager
 import android.os.Bundle
 import android.util.Base64
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -35,7 +39,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -50,6 +58,7 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
+import androidx.webkit.WebViewAssetLoader
 import kotlin.random.Random
 import kotlin.math.abs
 
@@ -153,7 +162,7 @@ private fun PhoneSurvivalApp(context: Context) {
                     when (tab) {
                         Tab.HOME -> HomeScreen(palette, onTab = { tab = it }, onAction = { action = it })
                         Tab.TOOLS -> ToolsScreen { action = it }
-                        Tab.GAMES -> GamesScreen { game = it }
+                        Tab.GAMES -> GamesScreen(onGame = { game = it }, onOpenLibrary = { action = "opensource_games" })
                         Tab.VAULT -> VaultLanding(palette) { action = "vault" }
                         Tab.SETTINGS -> SettingsScreen(
                             palette, paletteId,
@@ -181,6 +190,7 @@ private fun PhoneSurvivalApp(context: Context) {
         "storage" -> InfoDialog("ניהול אחסון", "הפתקים וההגדרות נשמרים מקומית. האפליקציה אינה יכולה לנקות או לקרוא קבצים פרטיים של אפליקציות אחרות.") { action = null }
         "flashlight" -> FlashlightDialog(context) { action = null }
         "compass" -> CompassDialog(context) { action = null }
+        "opensource_games" -> OpenSourceGamesDialog(LocalContext.current) { action = null }
         else -> Unit
     }
     game?.let { GameDialog(it) { game = null } }
@@ -289,11 +299,23 @@ private fun ToolsScreen(onAction: (String) -> Unit) {
 }
 
 @Composable
-private fun GamesScreen(onGame: (Game) -> Unit) {
+private fun GamesScreen(onGame: (Game) -> Unit, onOpenLibrary: () -> Unit) {
     var search by remember { mutableStateOf("") }
     Page {
         Text("מרכז המשחקים", fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("${games.count { it.ready }} משחקונים לא מקוונים פעילים בגרסה זו. ספריית 250 המשחקים שביקשת עדיין אינה שלמה.", fontSize = 13.sp, color = Color(0xFFADBDB3))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .35f))
+        ) {
+            Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("ספרייה מורחבת: 265 משחקי קוד פתוח", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = MaterialTheme.colorScheme.primary)
+                Text("150 משחקוני מיני ועוד 115 משחקי HTML5. לאחר התקנת האפליקציה הם כלולים במכשיר, ואינם דורשים אינטרנט כדי להיטען.", fontSize = 12.sp, color = Color(0xFFADBDB3))
+                Button(onClick = onOpenLibrary, modifier = Modifier.fillMaxWidth()) { Text("פתיחת ספריית 265 המשחקים") }
+            }
+        }
+        Text("${games.count { it.ready }} משחקונים מובנים נוספים", fontSize = 13.sp, color = Color(0xFFADBDB3))
         OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth(), label = { Text("חיפוש משחק") }, singleLine = true)
         val visibleGames = games.filter { it.name.contains(search, ignoreCase = true) || it.detail.contains(search, ignoreCase = true) }
         visibleGames.forEach { g ->
@@ -1763,4 +1785,83 @@ private fun NumberMemoryDialog(onDismiss: () -> Unit) {
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
     )
+}
+
+
+@Composable
+private fun OpenSourceGamesDialog(context: Context, onDismiss: () -> Unit) {
+    val assetLoader = remember(context) {
+        WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
+            .build()
+    }
+    val webView = remember(context, assetLoader) {
+        WebView(context).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
+            settings.setSupportMultipleWindows(false)
+            webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(
+                    view: WebView?,
+                    request: WebResourceRequest?
+                ): WebResourceResponse? {
+                    val url = request?.url ?: return null
+                    return if (url.host == "appassets.androidplatform.net") {
+                        assetLoader.shouldInterceptRequest(url)
+                    } else {
+                        WebResourceResponse(
+                            "text/plain",
+                            "utf-8",
+                            403,
+                            "Blocked",
+                            emptyMap(),
+                            java.io.ByteArrayInputStream(ByteArray(0))
+                        )
+                    }
+                }
+
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: WebResourceRequest?
+                ): Boolean {
+                    return request?.url?.host != "appassets.androidplatform.net"
+                }
+            }
+            loadUrl("https://appassets.androidplatform.net/assets/opensource/index.html")
+        }
+    }
+    DisposableEffect(webView) {
+        onDispose {
+            webView.stopLoading()
+            webView.loadUrl("about:blank")
+            webView.destroy()
+        }
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize().padding(7.dp),
+            color = MaterialTheme.colorScheme.background,
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("ספריית משחקי הקוד הפתוח", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    TextButton(onClick = onDismiss) { Text("סיום") }
+                }
+                AndroidView(
+                    factory = { webView },
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+            }
+        }
+    }
 }
