@@ -458,14 +458,19 @@ private class VaultStore(private val prefs: android.content.SharedPreferences) {
         prefs.edit().putString("vault_iv", Base64.encodeToString(iv, Base64.NO_WRAP))
             .putString("vault_data", Base64.encodeToString(data, Base64.NO_WRAP)).apply()
     }
-    fun open(password: String): String? = try {
-        val salt = Base64.decode(prefs.getString("vault_salt", null) ?: return null, Base64.NO_WRAP)
-        val iv = Base64.decode(prefs.getString("vault_iv", null) ?: return null, Base64.NO_WRAP)
-        val data = Base64.decode(prefs.getString("vault_data", null) ?: return null, Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, key(password, salt), GCMParameterSpec(128, iv))
-        String(cipher.doFinal(data), Charsets.UTF_8)
-    } catch (_: Exception) { null }
+    fun open(password: String): String? {
+        return try {
+            val saltText = prefs.getString("vault_salt", null) ?: return null
+            val ivText = prefs.getString("vault_iv", null) ?: return null
+            val dataText = prefs.getString("vault_data", null) ?: return null
+            val salt = Base64.decode(saltText, Base64.NO_WRAP)
+            val iv = Base64.decode(ivText, Base64.NO_WRAP)
+            val data = Base64.decode(dataText, Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key(password, salt), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(data), Charsets.UTF_8)
+        } catch (_: Exception) { null }
+    }
     private fun key(password: String, salt: ByteArray): SecretKeySpec {
         val spec = PBEKeySpec(password.toCharArray(), salt, 160_000, 256)
         return try { SecretKeySpec(SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded, "AES") }
