@@ -21,6 +21,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -326,7 +327,7 @@ private fun VaultLanding(p: AppPalette, onOpen: () -> Unit) {
                 Button(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text("פתיחה או יצירת כספת") }
             }
         }
-        Text("התוכן נשמר מקומית בלבד. הקפד לבחור סיסמה חזקה ולשמור אותה במקום בטוח.", fontSize = 12.sp, color = Color(0xFFADBDB3))
+        Text("אפשר לנהל כמה פתקים מוצפנים. התוכן נשמר מקומית בלבד; שמור את הסיסמה במקום בטוח.", fontSize = 12.sp, color = Color(0xFFADBDB3))
     }
 }
 
@@ -669,11 +670,36 @@ private fun StopwatchDialog(onDismiss: () -> Unit) {
     )
 }
 
+private data class PrivateNote(val title: String, val body: String)
+
+private fun encodePrivateNotes(notes: List<PrivateNote>): String =
+    org.json.JSONArray().apply {
+        notes.forEach { put(org.json.JSONObject().put("title", it.title).put("body", it.body)) }
+    }.toString()
+
+private fun decodePrivateNotes(serialized: String): List<PrivateNote> {
+    if (serialized.isBlank()) return listOf(PrivateNote("פתק ראשון", ""))
+    return try {
+        val json = org.json.JSONArray(serialized)
+        if (json.length() == 0) listOf(PrivateNote("פתק ראשון", ""))
+        else (0 until json.length()).map { index ->
+            val item = json.getJSONObject(index)
+            PrivateNote(item.optString("title", "פתק"), item.optString("body", ""))
+        }
+    } catch (_: Exception) {
+        // Keep older vault content readable by treating a pre-list vault as one note.
+        listOf(PrivateNote("פתק קודם", serialized))
+    }
+}
+
 @Composable
 private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () -> Unit) {
     val vault = remember(prefs) { VaultStore(prefs) }
     var password by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var noteTitle by remember { mutableStateOf("פתק ראשון") }
+    var entries by remember { mutableStateOf(listOf(PrivateNote("פתק ראשון", ""))) }
+    var selectedEntry by remember { mutableIntStateOf(0) }
     var unlocked by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var saved by remember { mutableStateOf(false) }
@@ -690,6 +716,11 @@ private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () 
     var newPassword by remember { mutableStateOf("") }
     var confirmNewPassword by remember { mutableStateOf("") }
     val locked = lockedUntil > clockNow
+    fun currentEntries(): List<PrivateNote> {
+        val current = entries.toMutableList()
+        if (selectedEntry in current.indices) current[selectedEntry] = PrivateNote(noteTitle, note)
+        return current
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (unlocked) "הזיכרון השחור פתוח" else if (vault.exists()) "פתיחת הזיכרון השחור" else "יצירת זיכרון שחור") },
@@ -701,7 +732,45 @@ private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () 
                     if (locked) Text("הגישה נעולה זמנית. נסה שוב בעוד ${((lockedUntil - clockNow) / 1000).coerceAtLeast(1)} שניות.", fontSize = 12.sp, color = Color(0xFFFFD166))
                     if (error.isNotBlank()) Text(error, color = Color(0xFFFF8A8A), fontSize = 12.sp)
                 } else {
-                    OutlinedTextField(note, { note = it; saved = false }, modifier = Modifier.fillMaxWidth().height(175.dp), label = { Text("תוכן מוצפן") })
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        entries.forEachIndexed { index, entry ->
+                            FilterChip(
+                                selected = selectedEntry == index,
+                                onClick = {
+                                    entries = currentEntries()
+                                    selectedEntry = index
+                                    noteTitle = entries[index].title
+                                    note = entries[index].body
+                                    saved = false
+                                    error = ""
+                                },
+                                label = { Text(entry.title.ifBlank { "פתק ללא כותרת" }, maxLines = 1) }
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(onClick = {
+                            entries = currentEntries() + PrivateNote("פתק חדש", "")
+                            selectedEntry = entries.lastIndex
+                            noteTitle = entries[selectedEntry].title
+                            note = ""
+                            saved = false
+                            error = ""
+                        }) { Text("פתק חדש +") }
+                        OutlinedButton(onClick = {
+                            val current = currentEntries().toMutableList()
+                            if (selectedEntry in current.indices) current.removeAt(selectedEntry)
+                            if (current.isEmpty()) current.add(PrivateNote("פתק ראשון", ""))
+                            entries = current
+                            selectedEntry = selectedEntry.coerceIn(0, entries.lastIndex)
+                            noteTitle = entries[selectedEntry].title
+                            note = entries[selectedEntry].body
+                            saved = false
+                            error = ""
+                        }) { Text("מחיקת פתק") }
+                    }
+                    OutlinedTextField(noteTitle, { noteTitle = it; saved = false }, modifier = Modifier.fillMaxWidth(), label = { Text("כותרת הפתק") }, singleLine = true)
+                    OutlinedTextField(note, { note = it; saved = false }, modifier = Modifier.fillMaxWidth().height(150.dp), label = { Text("תוכן מוצפן") })
                     if (changePasswordMode) {
                         OutlinedTextField(newPassword, { newPassword = it; error = "" }, modifier = Modifier.fillMaxWidth(), label = { Text("סיסמה חדשה (10 תווים לפחות)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                         OutlinedTextField(confirmNewPassword, { confirmNewPassword = it; error = "" }, modifier = Modifier.fillMaxWidth(), label = { Text("אימות סיסמה חדשה") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
@@ -719,6 +788,11 @@ private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () 
                     password.length < 10 -> error = "יש לבחור סיסמה בת 10 תווים לפחות."
                     !vault.exists() -> try {
                         vault.create(password)
+                        entries = listOf(PrivateNote("פתק ראשון", ""))
+                        selectedEntry = 0
+                        noteTitle = "פתק ראשון"
+                        note = ""
+                        vault.save(password, encodePrivateNotes(entries))
                         unlocked = true
                         failedAttempts = 0
                         prefs.edit().remove("vault_failed_attempts").remove("vault_locked_until").apply()
@@ -737,7 +811,10 @@ private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () 
                                 error = "סיסמה שגויה. נותרו ${5 - failedAttempts} ניסיונות לפני נעילה זמנית."
                             }
                         } else {
-                            note = result
+                            entries = decodePrivateNotes(result)
+                            selectedEntry = 0
+                            noteTitle = entries.first().title
+                            note = entries.first().body
                             unlocked = true
                             failedAttempts = 0
                             lockedUntil = 0L
@@ -749,8 +826,13 @@ private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () 
             else {
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     TextButton(onClick = {
-                        try { vault.save(password, note); saved = true; error = "" }
-                        catch (_: Exception) { error = "השמירה נכשלה." }
+                        try {
+                            val current = currentEntries()
+                            vault.save(password, encodePrivateNotes(current))
+                            entries = current
+                            saved = true
+                            error = ""
+                        } catch (_: Exception) { error = "השמירה נכשלה." }
                     }) { Text("שמירה מוצפנת") }
                     TextButton(onClick = {
                         if (!changePasswordMode) {
@@ -760,7 +842,9 @@ private fun VaultDialog(prefs: android.content.SharedPreferences, onDismiss: () 
                             newPassword.length < 10 -> error = "הסיסמה החדשה צריכה להכיל 10 תווים לפחות."
                             newPassword != confirmNewPassword -> error = "הסיסמאות החדשות אינן תואמות."
                             else -> try {
-                                vault.save(newPassword, note)
+                                val current = currentEntries()
+                                vault.save(newPassword, encodePrivateNotes(current))
+                                entries = current
                                 password = newPassword
                                 newPassword = ""
                                 confirmNewPassword = ""
