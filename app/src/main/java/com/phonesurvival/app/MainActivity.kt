@@ -52,21 +52,32 @@ private val appPalettes = listOf(
     AppPalette("blue", "כחול טכנולוגי", Color(0xFF62B4FF), Color(0xFF080D15), Color(0xFF121C2A)),
     AppPalette("purple", "סגול עמוק", Color(0xFFCB9BFF), Color(0xFF100A16), Color(0xFF20142A)),
     AppPalette("gold", "שחור וזהב", Color(0xFFFFD166), Color(0xFF100E08), Color(0xFF201B10)),
-    AppPalette("orange", "כתום אנרגטי", Color(0xFFFFA45B), Color(0xFF120B07), Color(0xFF24170F))
+    AppPalette("orange", "כתום אנרגטי", Color(0xFFFFA45B), Color(0xFF120B07), Color(0xFF24170F)),
+    AppPalette("teal", "טורקיז", Color(0xFF54E1D0), Color(0xFF061211), Color(0xFF102321)),
+    AppPalette("red", "אדום יין", Color(0xFFFF7373), Color(0xFF160809), Color(0xFF281214)),
+    AppPalette("pink", "ורוד ניאון", Color(0xFFFF8EC7), Color(0xFF160B13), Color(0xFF291522)),
+    AppPalette("cyan", "תכלת קרח", Color(0xFF83E8FF), Color(0xFF071116), Color(0xFF12232A)),
+    AppPalette("silver", "כסף ואפור", Color(0xFFD7DEE8), Color(0xFF0B0D11), Color(0xFF191D24)),
+    AppPalette("lime", "ירוק ליים", Color(0xFFC6F36B), Color(0xFF0D1106), Color(0xFF1B2410)),
+    AppPalette("midnight", "לילה סגול", Color(0xFF9DABFF), Color(0xFF090918), Color(0xFF17172B))
 )
 private enum class Tab(val label: String, val icon: String) {
-    HOME("בית", "⌂"), TOOLS("כלים", "🧰"), GAMES("משחקים", "🎮"), VAULT("כספת", "🔐"), SETTINGS("הגדרות", "⚙")
+    HOME("בית", "⌂"), TOOLS("כלים", "🧰"), GAMES("משחקים", "🎮"), VAULT("זיכרון שחור", "🔐"), SETTINGS("הגדרות", "⚙")
 }
 private data class Tool(val name: String, val detail: String, val icon: String, val action: String)
 private val tools = listOf(
     Tool("מחשבון", "חישובים בסיסיים", "🧮", "calculator"),
     Tool("פתקים", "מחברת מקומית", "📝", "notes"),
     Tool("שעון עצר", "מדידת זמן", "⏱️", "stopwatch"),
+    Tool("טיימר", "ספירה לאחור", "⏳", "timer"),
+    Tool("המרת יחידות", "אורך, משקל וטמפרטורה", "📐", "converter"),
+    Tool("מספר אקראי", "הגרלה בין שני מספרים", "🎲", "random"),
     Tool("מחולל סיסמאות", "יצירת סיסמה מקומית", "🔑", "password"),
-    Tool("רשימת חירום", "צ'קליסט שימושי", "🧭", "emergency"),
+    Tool("רשימת חירום", "צ'קליסט נשמר במכשיר", "🧭", "emergency"),
+    Tool("סוללה", "אחוזים וטעינה", "🔋", "battery"),
     Tool("ניהול אחסון", "מידע וטיפים", "💾", "storage"),
-    Tool("פנס", "דורש הרשאת מצלמה", "🔦", "flashlight"),
-    Tool("מצפן", "דורש חיישן תואם", "🧭", "compass")
+    Tool("פנס", "הדלקת מבזק המכשיר", "🔦", "flashlight"),
+    Tool("מצפן", "כיוון לפי חיישני המכשיר", "🧭", "compass")
 )
 private data class Game(val id: String, val name: String, val detail: String, val icon: String, val ready: Boolean)
 private val games = listOf(
@@ -80,19 +91,28 @@ private val games = listOf(
     Game("dice", "הטלת קובייה", "גלגל קובייה וירטואלית", "🎲", true),
     Game("coin", "עץ או פלי", "הטלת מטבע אקראית", "🪙", true),
     Game("sequence", "רצף מספרים", "מצא את המספר הבא", "🔢", true),
+    Game("rps", "אבן נייר ומספריים", "שחק מול המחשב", "✊", true),
+    Game("quiz", "חידון ידע", "שאלות כלליות בלי אינטרנט", "❓", true),
+    Game("tap", "אתגר הקשות", "כמה לחיצות תספיק ב־10 שניות?", "👆", true),
+    Game("simon", "זכור את הרצף", "אמן את הזיכרון", "🎨", true),
+    Game("higher", "גבוה או נמוך", "נחש אם הקלף הבא גבוה יותר", "🃏", true),
     Game("arcade", "ארקייד", "מתוכנן להרחבה", "👾", false),
     Game("board", "משחקי לוח", "מתוכנן להרחבה", "♟️", false)
 )
 
 @Composable
+private val LocalCompactMode = compositionLocalOf { false }
+
+@Composable
 private fun PhoneSurvivalApp(context: Context) {
     val prefs = remember(context) { context.getSharedPreferences("phone_survival", Context.MODE_PRIVATE) }
     var paletteId by remember { mutableStateOf(prefs.getString("palette", "green") ?: "green") }
+    var compactMode by remember { mutableStateOf(prefs.getBoolean("compact", false)) }
     val palette = appPalettes.firstOrNull { it.id == paletteId } ?: appPalettes.first()
     var tab by remember { mutableStateOf(Tab.HOME) }
     var action by remember { mutableStateOf<String?>(null) }
     var game by remember { mutableStateOf<Game?>(null) }
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl, LocalCompactMode provides compactMode) {
         MaterialTheme(colorScheme = darkColorScheme(
             primary = palette.accent, secondary = palette.accent.copy(alpha = .8f),
             background = palette.bg, surface = palette.panel, surfaceVariant = palette.panel,
@@ -121,7 +141,9 @@ private fun PhoneSurvivalApp(context: Context) {
                         Tab.SETTINGS -> SettingsScreen(
                             palette, paletteId,
                             onPalette = { paletteId = it; prefs.edit().putString("palette", it).apply() },
-                            prefs = prefs
+                            prefs = prefs,
+                            compact = compactMode,
+                            onCompact = { compactMode = it; prefs.edit().putBoolean("compact", it).apply() }
                         )
                     }
                 }
@@ -132,12 +154,16 @@ private fun PhoneSurvivalApp(context: Context) {
         "calculator" -> CalculatorDialog { action = null }
         "notes" -> NotesDialog(prefs) { action = null }
         "stopwatch" -> StopwatchDialog { action = null }
+        "timer" -> CountdownDialog { action = null }
+        "converter" -> UnitConverterDialog { action = null }
+        "random" -> RandomNumberDialog { action = null }
+        "battery" -> BatteryInfoDialog(context) { action = null }
         "vault" -> VaultDialog(prefs) { action = null }
         "password" -> PasswordDialog { action = null }
-        "emergency" -> EmergencyDialog { action = null }
-        "storage" -> InfoDialog("ניהול אחסון", "האפליקציה שומרת הגדרות ופתקים מקומית. היא אינה יכולה לנקות או לקרוא את הקבצים הפרטיים של אפליקציות אחרות.") { action = null }
-        "flashlight" -> InfoDialog("פנס", "הפעלת פנס המצלמה דורשת הרשאת CAMERA ומימוש ובדיקת תאימות במכשיר. כרגע זהו מסך מידע בלבד.") { action = null }
-        "compass" -> InfoDialog("מצפן", "מצפן מלא מחייב חיישן כיוון מתאים. נבדוק תמיכה בחיישנים לפני הפעלתו.") { action = null }
+        "emergency" -> EmergencyDialog(prefs) { action = null }
+        "storage" -> InfoDialog("ניהול אחסון", "הפתקים וההגדרות נשמרים מקומית. האפליקציה אינה יכולה לנקות או לקרוא קבצים פרטיים של אפליקציות אחרות.") { action = null }
+        "flashlight" -> FlashlightDialog(context) { action = null }
+        "compass" -> CompassDialog(context) { action = null }
         else -> Unit
     }
     game?.let { GameDialog(it) { game = null } }
@@ -145,9 +171,10 @@ private fun PhoneSurvivalApp(context: Context) {
 
 @Composable
 private fun Page(content: @Composable ColumnScope.() -> Unit) {
+    val compact = LocalCompactMode.current
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp), content = content
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(if (compact) 11.dp else 18.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 14.dp), content = content
     )
 }
 
@@ -182,7 +209,7 @@ private fun HomeScreen(p: AppPalette, onTab: (Tab) -> Unit, onAction: (String) -
         }
         FeatureRow("🧰", "כלים חכמים", "מחשבון, שעון עצר, פתקים ועוד", p) { onTab(Tab.TOOLS) }
         FeatureRow("🔐", "כספת פרטית", "הצפנת פתקים באמצעות סיסמה", p) { onTab(Tab.VAULT) }
-        FeatureRow("🎨", "התאמה אישית", "חמישה צבעי עיצוב", p) { onTab(Tab.SETTINGS) }
+        FeatureRow("🎨", "התאמה אישית", "${appPalettes.size} ערכות צבע", p) { onTab(Tab.SETTINGS) }
     }
 }
 
@@ -248,7 +275,7 @@ private fun ToolsScreen(onAction: (String) -> Unit) {
 private fun GamesScreen(onGame: (Game) -> Unit) {
     Page {
         Text("מרכז המשחקים", fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Text("שלושה משחקונים ראשוניים ניתנים להפעלה. שילוב 250 משחקי קוד פתוח הוא שלב הרחבה נפרד.", fontSize = 13.sp, color = Color(0xFFADBDB3))
+        Text("${games.count { it.ready }} משחקונים לא מקוונים זמינים כרגע. הרחבת הספרייה ל־250 משחקי קוד פתוח עדיין לא הושלמה.", fontSize = 13.sp, color = Color(0xFFADBDB3))
         games.forEach { g ->
             Surface(
                 Modifier.fillMaxWidth().clickable { if (g.ready) onGame(g) },
@@ -285,12 +312,11 @@ private fun VaultLanding(p: AppPalette, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun SettingsScreen(p: AppPalette, selected: String, onPalette: (String) -> Unit, prefs: android.content.SharedPreferences) {
-    var compact by remember { mutableStateOf(prefs.getBoolean("compact", false)) }
+private fun SettingsScreen(p: AppPalette, selected: String, onPalette: (String) -> Unit, prefs: android.content.SharedPreferences, compact: Boolean, onCompact: (Boolean) -> Unit) {
     var resetConfirm by remember { mutableStateOf(false) }
     Page {
         Text("הגדרות והתאמה אישית", fontSize = 25.sp, fontWeight = FontWeight.Bold)
-        Text("בחר את הצבע שמתאים לך", color = Color(0xFFADBDB3))
+        Text("בחר אחת מ־${appPalettes.size} ערכות העיצוב. הבחירה נשמרת במכשיר.", color = Color(0xFFADBDB3))
         appPalettes.forEach { item ->
             Surface(
                 Modifier.fillMaxWidth().clickable { onPalette(item.id) },
@@ -311,11 +337,11 @@ private fun SettingsScreen(p: AppPalette, selected: String, onPalette: (String) 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("ממשק קומפקטי", fontWeight = FontWeight.Bold)
-                Text("שמירת העדפה לממשק קומפקטי עתידי", fontSize = 11.sp, color = Color(0xFFADBDB3))
+                Text("צמצום הרווחים במסכי האפליקציה", fontSize = 11.sp, color = Color(0xFFADBDB3))
             }
-            Switch(checked = compact, onCheckedChange = { compact = it; prefs.edit().putBoolean("compact", it).apply() })
+            Switch(checked = compact, onCheckedChange = onCompact)
         }
-        FeatureRow("🛡️", "פרטיות", "אין הרשאת אינטרנט במניפסט", p) {}
+        FeatureRow("🛡️", "פרטיות", "אין הרשאת אינטרנט במניפסט", p) {}\n        FeatureRow("🎮", "משחקים לא מקוונים", "${games.count { it.ready }} משחקונים פעילים בגרסה זו", p) {}
         FeatureRow("ℹ️", "אודות", "PHONE SURVIVAL · גרסה 1.0.0", p) {}
         OutlinedButton(onClick = { resetConfirm = true }, modifier = Modifier.fillMaxWidth()) { Text("איפוס צבע לעיצוב המקורי") }
     }
@@ -495,7 +521,7 @@ private fun PasswordDialog(onDismiss: () -> Unit) {
             if (result.isNotBlank()) Text(result, color = MaterialTheme.colorScheme.primary, fontSize = 16.sp)
             Text("הסיסמה נוצרת מקומית ואינה נשלחת לרשת.", color = Color(0xFFADBDB3), fontSize = 12.sp)
         } },
-        confirmButton = { TextButton(onClick = { val n = (length.toIntOrNull() ?: 20).coerceIn(8, 40); result = (1..n).map { alphabet[Random.nextInt(alphabet.length)] }.joinToString("") }) { Text("יצירה") } },
+        confirmButton = { TextButton(onClick = { val n = (length.toIntOrNull() ?: 20).coerceIn(8, 40); result = (1..n).map { alphabet[SecureRandom().nextInt(alphabet.length)] }.joinToString("") }) { Text("יצירה") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("סגירה") } }
     )
 }
